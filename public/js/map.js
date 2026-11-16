@@ -1,7 +1,7 @@
 function initializeMap(latitude, longitude, title, location, country) {
   document.addEventListener("DOMContentLoaded", function () {
     var map = tt.map({
-      key: "WWMep8BYS4WONN1nAGawNihp774MWAsv",
+      key: "A9R3QV4o4iiTAmktvNSU8nxujqFqzFBY",
       container: "map",
       center: [longitude, latitude],
       zoom: 13,
