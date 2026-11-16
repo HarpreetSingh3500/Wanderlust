@@ -1,6 +1,7 @@
 if (process.env.NODE_ENV != "production") {
   require("dotenv").config();
 }
+
 // Dependencies
 const express = require("express");
 const app = express();
@@ -18,7 +19,6 @@ const flash = require("connect-flash");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
 const User = require("./models/user.js");
-const { error } = require("console");
 
 const db_url = process.env.ATLAS_DB;
 
@@ -31,11 +31,8 @@ main()
     console.log("Connected to DB");
   })
   .catch((err) => {
-    console.log(err);
+    console.log("MongoDB Connection Error:", err);
   });
-
-// port
-const port = 3000;
 
 const store = MongoStore.create({
   mongoUrl: db_url,
@@ -45,11 +42,11 @@ const store = MongoStore.create({
   touchAfter: 24 * 3600,
 });
 
-store.on("error",()=>{
-  console.log("Error in Mongo Session Store: ", error);
-})
+store.on("error", (err) => {
+  console.log("Error in Mongo Session Store:", err);
+});
 
-// session options
+// Session options
 const sessionOptions = {
   store,
   secret: process.env.SECRET,
@@ -62,13 +59,23 @@ const sessionOptions = {
   },
 };
 
-// middlewears
+// Middlewares
+app.set("trust proxy", 1);
 app.use(methodOverride("_method"));
 app.use(express.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.engine("ejs", ejsMate);
 app.use(express.static(path.join(__dirname, "/public")));
+
+// Default res.locals fallback BEFORE session/passport so error.ejs never crashes
+app.use((req, res, next) => {
+  res.locals.currUser = null;
+  res.locals.success = [];
+  res.locals.error = [];
+  next();
+});
+
 app.use(session(sessionOptions));
 app.use(flash());
 app.use(passport.initialize());
@@ -77,34 +84,34 @@ passport.use(new LocalStrategy(User.authenticate()));
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
-// server starter
-app.listen(port, () => {
-  console.log(`Listening to port ${port}`);
+// Populate actual flash & user after session/passport run
+app.use((req, res, next) => {
+  res.locals.success = req.flash("success");
+  res.locals.error = req.flash("error");
+  res.locals.currUser = req.user || null;
+  next();
 });
 
-// root link
+// Root link & Routes
 app.get("/", (req, res) => {
   res.redirect("/listings");
 });
 
-app.use((req, res, next) => {
-  res.locals.success = req.flash("success");
-  res.locals.error = req.flash("error");
-  res.locals.currUser = req.user;
-  next();
-});
-
-// routes
 app.use("/listings", listingsRouter);
 app.use("/listings/:id/reviews", reviewsRouter);
 app.use("/", userRouter);
 
-app.use((req, res, next) => {
+app.all("*", (req, res, next) => {
   next(new ExpressError(404, "Page Not Found"));
 });
 
 app.use((err, req, res, next) => {
   let { statusCode = 500, message = "Something went wrong!" } = err;
   res.status(statusCode).render("error.ejs", { message });
-  // res.staus(statusCode).send(message);
+});
+
+// Server starter
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Listening to port ${port}`);
 });
